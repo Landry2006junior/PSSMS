@@ -169,7 +169,7 @@ const recordExit = async (req, res) => {
     }
 
     // Business Logic: Use helper to calculate duration and fee
-    const { duration, AmountPaid, durationMinutes, isExceeded } = calculateFee(
+    const { duration, AmountPaid, durationMinutes, isExceeded, hourlyRate } = calculateFee(
       record.Entrytime,
       Exittime,
     );

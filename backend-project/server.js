@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
 const cors = require("cors");
 const express = require("express");
-const app = express();
-const port = process.env.port || 5000;
 require("dotenv").config();
+const app = express();
+const port = process.env.PORT || 5001;
 const authroutes = require("./routes/authroutes");
 const carroutes = require("./routes/carroutes");
 const paymentroutes = require("./routes/paymentroutes");
@@ -26,8 +26,8 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
     console.log("connected to the database successfully");
-    app.listen(process.env.port, () => {
-      console.log(`server is running on port ${process.env.port}`);
+    app.listen(port, () => {
+      console.log(`server is running on port ${port}`);
     });
   })
   .catch((error) => {

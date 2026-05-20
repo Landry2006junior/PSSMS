@@ -33,11 +33,11 @@ const Layout = () => {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900">{user?.name || 'Administrator'}</p>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter">{user?.role || 'System Manager'}</p>
+                <p className="text-sm font-bold text-slate-900">{user?.UserName ? `Hey there, ${user.UserName} 👋` : 'Administrator'}</p>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter">{user?.role || 'Parking Boss'}</p>
               </div>
               <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                {(user?.name || 'A').charAt(0)}
+                {(user?.UserName || 'A').charAt(0).toUpperCase()}
               </div>
             </div>
           </div>
