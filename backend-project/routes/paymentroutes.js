@@ -5,10 +5,11 @@ const {
   getDailyReport,
   getAllPayments,
 } = require("../controller/paymentcontroller");
+const { protect } = require("../middleware/authmiddleware");
 
-router.post("/generateBill/:RecordID", generateBill);
-router.get("/getDailyReport", getDailyReport);
-router.get("/getAllPayments", getAllPayments);
+// All payment routes are protected
+router.post("/generateBill/:recordId", protect, generateBill);
+router.get("/getDailyReport", protect, getDailyReport);
+router.get("/getAllPayments", protect, getAllPayments);
 
 module.exports = router;
-

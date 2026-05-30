@@ -1,4 +1,4 @@
-// controllers/reportController.js
+// controllers/paymentController.js
 const ParkingRecord = require("../models/ParkingRecord");
 const Payment = require("../models/Payment");
 
@@ -7,41 +7,52 @@ const Payment = require("../models/Payment");
 // -----------------------------------------------
 const generateBill = async (req, res) => {
   try {
-    const { RecordID } = req.params;
+    const { recordId } = req.params;
 
-    // Validation: RecordID must be provided
-    if (!RecordID) {
-      return res.status(400).json({ message: "Record ID is required" });
+    // Validation: recordId must be provided
+    if (!recordId) {
+      return res.status(400).json({
+        success: false,
+        message: "Record ID is required",
+      });
     }
 
     // Validation: Must be a valid MongoDB ObjectId
-    if (!RecordID.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid Record ID format" });
+    if (!recordId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Record ID format",
+      });
     }
 
     // Business Logic: Fetch full record with Car and slot details
     // Populating 'Car' and 'slot' — your ParkingRecord field names
-    const record = await ParkingRecord.findById(RecordID)
+    const record = await ParkingRecord.findById(recordId)
       .populate("Car", "PlateNumber DriverName phoneNumber")
       .populate("slot", "SlotNumber");
 
     if (!record) {
-      return res.status(404).json({ message: "Parking record not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Parking record not found",
+      });
     }
 
     // Validation: Bill only generated after car has exited
     // Using your field name 'Exittime'
     if (record.Exittime === null) {
       return res.status(400).json({
+        success: false,
         message: "Cannot generate bill — car has not exited yet",
       });
     }
 
     // Business Logic: Fetch payment linked to this record
     // Using your Payment field name 'RecordId' (lowercase d)
-    const payment = await Payment.findOne({ RecordId: RecordID });
+    const payment = await Payment.findOne({ RecordId: recordId });
     if (!payment) {
       return res.status(404).json({
+        success: false,
         message: "Payment not found for this session",
       });
     }
@@ -49,9 +60,14 @@ const generateBill = async (req, res) => {
     // Business Logic: Build and return complete bill
     // Using your exact field names throughout
     res.status(200).json({
+      success: true,
+      message: "Bill generated successfully",
       bill: {
+        recordId: record._id,
         plateNumber: record.plateNumber,
         DriverName: record.Car?.DriverName,
+        phoneNumber: record.Car?.phoneNumber,
+        SlotNumber: record.SlotNumber,
         Entrytime: record.Entrytime,
         Exittime: record.Exittime,
         duration: record.duration,
@@ -60,9 +76,11 @@ const generateBill = async (req, res) => {
       },
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to generate bill", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate bill",
+      error: error.message,
+    });
   }
 };
 
@@ -87,8 +105,10 @@ const getDailyReport = async (req, res) => {
     // Validation: Inform if no payments recorded today
     if (payments.length === 0) {
       return res.status(200).json({
+        success: true,
         message: "No parking payments recorded today",
         report: [],
+        total: 0,
       });
     }
 
@@ -97,18 +117,25 @@ const getDailyReport = async (req, res) => {
     const report = await Promise.all(
       payments.map(async (payment) => {
         // Using your Payment field name 'RecordId' (lowercase d)
-        const record = await ParkingRecord.findById(payment.RecordId);
+        const record = await ParkingRecord.findById(payment.RecordId).populate(
+          "Car",
+          "PlateNumber DriverName phoneNumber",
+        );
 
         // Skip if record was deleted
         if (!record) return null;
 
         // Return report row using your exact field names
         return {
+          recordId: record._id,
           plateNumber: record.plateNumber,
+          DriverName: record.Car?.DriverName,
+          SlotNumber: record.SlotNumber,
           Entrytime: record.Entrytime,
           Exittime: record.Exittime,
           duration: record.duration,
           AmountPaid: payment.AmountPaid,
+          paymentDate: payment.paymentDate,
         };
       }),
     );
@@ -116,12 +143,23 @@ const getDailyReport = async (req, res) => {
     // Business Logic: Filter out any null rows from deleted records
     const cleanReport = report.filter((row) => row !== null);
 
+    // Calculate total revenue
+    const totalRevenue = cleanReport.reduce(
+      (sum, row) => sum + row.AmountPaid,
+      0,
+    );
+
     res.status(200).json({
+      success: true,
+      message: "Daily report generated successfully",
       report: cleanReport,
       total: cleanReport.length,
+      totalRevenue,
+      reportDate: new Date().toISOString().split("T")[0],
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "Failed to generate daily report",
       error: error.message,
     });
@@ -135,27 +173,38 @@ const getAllPayments = async (req, res) => {
   try {
     const payments = await Payment.find()
       .populate({
-        path: 'RecordId',
-        populate: { path: 'Car slot' }
+        path: "RecordId",
+        select: "plateNumber SlotNumber Entrytime Exittime duration AmountPaid",
+        populate: { path: "Car", select: "PlateNumber DriverName phoneNumber" },
       })
       .sort({ paymentDate: -1 });
 
-    const formattedPayments = payments.map(p => ({
+    const formattedPayments = payments.map((p) => ({
       _id: p._id,
       plateNumber: p.RecordId?.plateNumber,
       SlotNumber: p.RecordId?.SlotNumber,
       Entrytime: p.RecordId?.Entrytime,
       Exittime: p.RecordId?.Exittime,
-      Amount: p.AmountPaid, // Mapping to Amount for frontend consistency
-      PaymentStatus: 'Paid', // Assuming all in this collection are paid
-      paymentDate: p.paymentDate
+      duration: p.RecordId?.duration,
+      Amount: p.AmountPaid,
+      PaymentStatus: "Paid",
+      paymentDate: p.paymentDate,
+      recordId: p.RecordId?._id,
     }));
 
-    res.status(200).json(formattedPayments);
+    res.status(200).json({
+      success: true,
+      message: "Payments retrieved successfully",
+      data: formattedPayments,
+      total: formattedPayments.length,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch payments", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch payments",
+      error: error.message,
+    });
   }
 };
 
 module.exports = { generateBill, getDailyReport, getAllPayments };
-

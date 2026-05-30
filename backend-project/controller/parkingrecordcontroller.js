@@ -9,7 +9,10 @@ const Car = require("../models/Car");
 // Using your model field names: Entrytime, Exittime, duration
 // -----------------------------------------------
 const calculateFee = (Entrytime, Exittime) => {
-  const durationMinutes = Math.max(0, Math.floor((Exittime - Entrytime) / (1000 * 60)));
+  const durationMinutes = Math.max(
+    0,
+    Math.floor((Exittime - Entrytime) / (1000 * 60)),
+  );
   const durationHours = Math.ceil(durationMinutes / 60) || 1;
 
   const hours = Math.floor(durationMinutes / 60);
@@ -134,26 +137,33 @@ const recordEntry = async (req, res) => {
 // -----------------------------------------------
 const recordExit = async (req, res) => {
   try {
-    const { RecordID } = req.params;
+    const { recordId } = req.params;
 
-    // Validation: RecordID must be provided in the URL
-    if (!RecordID) {
-      return res.status(400).json({ message: "Record ID is required" });
+    // Validation: recordId must be provided in the URL
+    if (!recordId) {
+      return res.status(400).json({
+        success: false,
+        message: "Record ID is required",
+      });
     }
 
-    // Validation: RecordID must be a valid MongoDB ObjectId
-    if (!RecordID.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid Record ID format" });
+    // Validation: recordId must be a valid MongoDB ObjectId
+    if (!recordId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Record ID format",
+      });
     }
 
     // Business Logic: Find active record — Exittime null means car is still parked
     // Using your field name 'Exittime' (capital E lowercase t)
     const record = await ParkingRecord.findOne({
-      _id: RecordID,
+      _id: recordId,
       Exittime: null,
     });
     if (!record) {
       return res.status(404).json({
+        success: false,
         message: "Active parking record not found. Car may have already exited",
       });
     }
@@ -164,36 +174,41 @@ const recordExit = async (req, res) => {
     // Validation: Exittime must be after Entrytime
     if (Exittime <= record.Entrytime) {
       return res.status(400).json({
+        success: false,
         message: "Exit time cannot be before or equal to entry time",
       });
     }
 
     // Business Logic: Use helper to calculate duration and fee
-    const { duration, AmountPaid, durationMinutes, isExceeded, hourlyRate } = calculateFee(
-      record.Entrytime,
-      Exittime,
-    );
+    const { duration, AmountPaid, durationMinutes, isExceeded, hourlyRate } =
+      calculateFee(record.Entrytime, Exittime);
 
     // Validation: Duration must be positive
     if (durationMinutes < 0) {
-      return res.status(400).json({ message: "Invalid duration calculated" });
-    }
-
-    // Business Logic: Prevent duplicate payment for same record
-    const existingPayment = await Payment.findOne({ RecordId: record._id });
-    if (existingPayment) {
       return res.status(400).json({
-        message: "Payment already exists for this record",
+        success: false,
+        message: "Invalid duration calculated",
       });
     }
 
-    // Business Logic: Auto-generate payment
-    const newPayment = new Payment({
-      RecordId: record._id,
-      AmountPaid,
-      paymentDate: new Date(),
-    });
-    await newPayment.save();
+    // Business Logic: Auto-generate payment with race condition prevention
+    let newPayment;
+    try {
+      newPayment = new Payment({
+        RecordId: record._id,
+        AmountPaid,
+        paymentDate: new Date(),
+      });
+      await newPayment.save();
+    } catch (error) {
+      if (error.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment already exists for this record",
+        });
+      }
+      throw error;
+    }
 
     // Business Logic: Update ParkingRecord with exit details
     record.Exittime = Exittime;
@@ -211,6 +226,7 @@ const recordExit = async (req, res) => {
 
     // Business Logic: Return complete bill right after exit
     res.status(200).json({
+      success: true,
       message: "Car exit recorded successfully",
       bill: {
         plateNumber: record.plateNumber,
@@ -223,9 +239,11 @@ const recordExit = async (req, res) => {
       },
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to record exit", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to record exit",
+      error: error.message,
+    });
   }
 };
 
@@ -255,22 +273,31 @@ const getAllRecords = async (req, res) => {
 // -----------------------------------------------
 const updateRecord = async (req, res) => {
   try {
-    const { RecordID } = req.params;
+    const { recordId } = req.params;
     const updates = req.body;
 
-    // Validation: RecordID must be provided
-    if (!RecordID) {
-      return res.status(400).json({ message: "Record ID is required" });
+    // Validation: recordId must be provided
+    if (!recordId) {
+      return res.status(400).json({
+        success: false,
+        message: "Record ID is required",
+      });
     }
 
     // Validation: Must be a valid MongoDB ObjectId
-    if (!RecordID.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid Record ID format" });
+    if (!recordId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Record ID format",
+      });
     }
 
     // Validation: Update body must not be empty
     if (!updates || Object.keys(updates).length === 0) {
-      return res.status(400).json({ message: "No update data provided" });
+      return res.status(400).json({
+        success: false,
+        message: "No update data provided",
+      });
     }
 
     // Validation: Protect critical fields from manual changes
@@ -281,6 +308,7 @@ const updateRecord = async (req, res) => {
     );
     if (attemptedProtected.length > 0) {
       return res.status(400).json({
+        success: false,
         message: `Cannot update protected fields: ${attemptedProtected.join(", ")}`,
       });
     }
@@ -288,19 +316,34 @@ const updateRecord = async (req, res) => {
     // Validation: If Exittime is being updated it must be after Entrytime
     // Using your field names 'Exittime' and 'Entrytime'
     if (updates.Exittime) {
-      const record = await ParkingRecord.findById(RecordID);
+      const record = await ParkingRecord.findById(recordId);
       if (!record) {
-        return res.status(404).json({ message: "Record not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Record not found",
+        });
       }
-      if (new Date(updates.Exittime) <= record.Entrytime) {
+      const exitTime = new Date(updates.Exittime);
+
+      // Check exit time is after entry time
+      if (exitTime <= record.Entrytime) {
         return res.status(400).json({
+          success: false,
           message: "Exit time must be after entry time",
+        });
+      }
+
+      // Check exit time is not in the future
+      if (exitTime > new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "Exit time cannot be in the future",
         });
       }
     }
 
     // Business Logic: Find and update — return new version with { new: true }
-    const updated = await ParkingRecord.findByIdAndUpdate(RecordID, updates, {
+    const updated = await ParkingRecord.findByIdAndUpdate(recordId, updates, {
       new: true,
       runValidators: true,
     })
@@ -308,17 +351,23 @@ const updateRecord = async (req, res) => {
       .populate("slot", "SlotNumber SlotStatus");
 
     if (!updated) {
-      return res.status(404).json({ message: "Record not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Record not found",
+      });
     }
 
     res.status(200).json({
+      success: true,
       message: "Record updated successfully",
       record: updated,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to update record", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update record",
+      error: error.message,
+    });
   }
 };
 
@@ -327,38 +376,48 @@ const updateRecord = async (req, res) => {
 // -----------------------------------------------
 const deleteRecord = async (req, res) => {
   try {
-    const { RecordID } = req.params;
+    const { recordId } = req.params;
 
-    // Validation: RecordID must be provided
-    if (!RecordID) {
-      return res.status(400).json({ message: "Record ID is required" });
+    // Validation: recordId must be provided
+    if (!recordId) {
+      return res.status(400).json({
+        success: false,
+        message: "Record ID is required",
+      });
     }
 
     // Validation: Must be a valid MongoDB ObjectId
-    if (!RecordID.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ message: "Invalid Record ID format" });
+    if (!recordId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Record ID format",
+      });
     }
 
-    const record = await ParkingRecord.findById(RecordID);
+    const record = await ParkingRecord.findById(recordId);
     if (!record) {
-      return res.status(404).json({ message: "Record not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Record not found",
+      });
     }
 
     // Business Logic: Cannot delete active record — car is still parked
     // Using your field name 'Exittime' (capital E lowercase t)
     if (record.Exittime === null) {
       return res.status(400).json({
+        success: false,
         message: "Cannot delete an active record — car is still parked",
       });
     }
 
     // Business Logic: Delete the parking record
-    await ParkingRecord.findByIdAndDelete(RecordID);
+    await ParkingRecord.findByIdAndDelete(recordId);
 
     // Business Logic: Delete linked payment to keep data consistent
     // Relationship: Payment.RecordId references this ParkingRecord
     // Using your Payment model field name 'RecordId' (lowercase d)
-    await Payment.findOneAndDelete({ RecordId: RecordID });
+    await Payment.findOneAndDelete({ RecordId: recordId });
 
     // Business Logic: Free the slot in case it was left Occupied
     await ParkingSlot.findOneAndUpdate(
@@ -367,12 +426,15 @@ const deleteRecord = async (req, res) => {
     );
 
     res.status(200).json({
+      success: true,
       message: "Record and related payment deleted successfully",
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete record", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete record",
+      error: error.message,
+    });
   }
 };
 
