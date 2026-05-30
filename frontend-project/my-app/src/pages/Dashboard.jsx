@@ -30,6 +30,7 @@ const StatCard = ({ title, value, icon: Icon, color, loading }) => (
 const Dashboard = () => {
   const [stats, setStats] = useState({
     totalCars: 0,
+    totalSlots: 0,
     activeRecords: 0,
     availableSlots: 0,
     todayRevenue: 0

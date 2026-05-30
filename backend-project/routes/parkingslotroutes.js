@@ -5,7 +5,7 @@ const {
   getAllSlots,
   getAvailableSlots,
   deleteSlot,
-} = require("../controller/parkingslotcontrolller");
+} = require("../controller/parkingslotcontroller");
 
 router.post("/addSlot", addSlot);
 router.get("/getAllSlots", getAllSlots);

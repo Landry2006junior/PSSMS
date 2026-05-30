@@ -6,7 +6,7 @@ const {
   getAllPayments,
 } = require("../controller/paymentcontroller");
 
-router.post("/generateBill", generateBill);
+router.post("/generateBill/:RecordID", generateBill);
 router.get("/getDailyReport", getDailyReport);
 router.get("/getAllPayments", getAllPayments);
 

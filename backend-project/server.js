@@ -14,7 +14,6 @@ app.use(cors());
 app.use(express.json());
 
 //mount routes
-//mount routes
 app.use("/api/auth", authroutes);
 app.use("/api/cars", carroutes);
 app.use("/api/payments", paymentroutes);

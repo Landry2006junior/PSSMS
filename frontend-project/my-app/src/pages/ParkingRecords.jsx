@@ -124,14 +124,14 @@ const ParkingRecords = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan="6" className="px-6 py-12 text-center text-slate-400">
                     <Loader2 className="animate-spin inline-block mb-2" size={24} />
                     <p className="text-xs font-bold uppercase tracking-widest">Updating Logs...</p>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-slate-300">No active or past sessions found.</td>
+                  <td colSpan="6" className="px-6 py-12 text-center text-slate-300">No active or past sessions found.</td>
                 </tr>
               ) : records.map((record) => (
                 <tr key={record._id} className="hover:bg-slate-50/50 transition-colors">
